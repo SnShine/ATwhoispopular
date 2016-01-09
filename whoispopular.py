@@ -1,5 +1,5 @@
 import requests
-import confidential
+import confidential, sg_filter
 from pytrends.pyGTrends import pyGTrends
 import tweepy
 import matplotlib.pyplot as plt
@@ -35,16 +35,24 @@ def plotData(timeseries_title, timeseries_data):
         y_axis= [(a[i+1]) for a in timeseries_data]
         y_axis= ["0" if a==" " else a for a in y_axis]
         y_axis= [int(a) for a in y_axis]
+        y_axis_smooth= sg_filter.savitzky_golay(y_axis, 11, 3)
 
-        plt.plot(time_axis, y_axis, label=timeseries_title[i+1])
+        #plt.plot(time_axis, y_axis, linewidth=2, c="purple")
+        plt.plot(time_axis, y_axis_smooth, linewidth=2, linestyle="-", label=timeseries_title[i+1])
 
 
-    plt.xlabel('Radius/Side')
-    plt.ylabel('Area')
-    plt.title('Area of Shapes')
+
+    # plt.xlabel('Radius/Side')
+    # plt.ylabel('Area')
+    # plt.title('Area of Shapes')
     plt.legend()
     #plt.draw()
-    plt.savefig("abc.png")
+
+    current_fig= plt.gcf()
+    current_fig.set_size_inches(18.5, 10.5)
+
+
+    current_fig.savefig("abc.png")
 
 def parseData(raw_data):
     timeseries_data= raw_data[raw_data.find("Interest over time"): raw_data.find("\n\n\n")]
@@ -58,7 +66,7 @@ def parseData(raw_data):
     return timeseries_title, timeseries_data
 
 if __name__== "__main__":
-    tweet= "katy perry, jay z, beyonce, kanye west"
+    tweet= "artificial intelligence, machine learning"
     tweet_keywords= len(tweet.split(","))
 
     raw_data= get_googleTrends(tweet)

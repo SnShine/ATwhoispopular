@@ -1,0 +1,7 @@
+temporary and log files
+tmp*
+*.log
+*.html
+
+files containing personal detalis
+confidential*

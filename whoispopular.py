@@ -32,6 +32,7 @@ def getGoogleTrends(searchterms, period= None):
 
 def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
     # plt.plot(radius, square, marker='o', linestyle='--', color='r', label='Square')
+    filename= None
 
     time_axis= [i+1 for i in range(len(timeseries_data))]
     #custom x labels
@@ -73,6 +74,8 @@ def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
     current_fig.set_size_inches(18.5, 10.5)
 
     current_fig.savefig("%s_%s.png" % (tweet_id, tweet_from))
+
+    return filename
 
 
 def parseGoogleData(raw_data):
@@ -125,6 +128,11 @@ def parseTweet(tweet_from, tweet_text):
 
     return tagged_users, query, time_span
 
+def getReplyTweet(tagged_users):
+    reply= "."+ " ".join("@%s" % a for a in tagged_users if a!= MYUSERNAME)
+
+    return reply
+
 
 class MyStreamListener(tweepy.StreamListener):
     def on_status(self, status):
@@ -141,26 +149,28 @@ class MyStreamListener(tweepy.StreamListener):
                 tagged_users, tweet_query, time_span= parseTweet(tweet_from, tweet_text.lower())
             except:
                 error_reply= "@%s please check the format of your tweet. I can't understand it yet!" % tweet_from
-                error_reply_status= api.update_status(status=error_reply, in_reply_to_status_id=tweet_id)
+                error_reply_status= api.update_status(status= error_reply, in_reply_to_status_id= tweet_id)
             else:
                 raw_data= getGoogleTrends(tweet_query, time_span)
 
                 if "Interest over time" in raw_data:
-                    timeseries_title, timeseries_data= parseGoogleData(raw_data)
-
                     outfile= open("tmp_data1.txt", "w")
                     outfile.write(raw_data)
                     outfile.close()
 
-                    savePlotData(timeseries_title, timeseries_data tweet_id, tweet_from)
+                    timeseries_title, timeseries_data= parseGoogleData(raw_data)
+                    filename= savePlotData(timeseries_title, timeseries_data tweet_id, tweet_from)
 
+                    if filename:
+                        reply_tweet= getReplyTweet(tagged_users)
+                        reply_tweet_status= api.update_with_media(filename= filename, status= reply_tweet, in_reply_to_status_id= tweet_id)
 
                 elif "Check" in raw_data:
                     error_reply= "@%s please check the format of your date and keywords. I am finding it difficult to parse them." % tweet_from
-                    error_reply_status= api.update_status(status=error_reply, in_reply_to_status_id=tweet_id)
+                    error_reply_status= api.update_status(status= error_reply, in_reply_to_status_id= tweet_id)
                 else:
                     error_reply= "@%s provided keywords have very less traffic to compare. Choose some interesting topics!" % tweet_from
-                    error_reply_status= api.update_status(status=error_reply, in_reply_to_status_id=tweet_id)
+                    error_reply_status= api.update_status(status= error_reply, in_reply_to_status_id= tweet_id)
 
     def on_error(self, status_code):
         print(status_code)
@@ -180,21 +190,9 @@ if __name__== "__main__":
     try:
         # starts listening to twitter stream
         #myStream.filter(track=['python'])
-        #myStream.userstream(_with='user', replies='all')
+        myStream.userstream(_with='user', replies='all')
         print("streamer not using")
     except Exception as e:
         print("Stream exception: %s" % e)
         raise e
-
-
-    tweet_from= "pp"
-    if tweet_from.lower() != MYUSERNAME:
-        tweet_text= "hey @dora wanna find @ATwhoispopular samantha, tamanna 69m"
-        tagged_users, tweet_query, time_span= parseTweet(tweet_from, tweet_text.lower())
-        print(tagged_users)
-        print(tweet_query)
-        print(time_span)
-        for i in range(10):
-            raw_data= getGoogleTrends(tweet_query, time_span)
-            print(raw_data== None)
 

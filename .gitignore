@@ -4,4 +4,4 @@ tmp*
 *.html
 
 files containing personal detalis
-confidential*
+config*

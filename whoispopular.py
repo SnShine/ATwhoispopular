@@ -16,6 +16,11 @@ google_password= config.google["Password"]
 
 print("Connecting to google")
 MYCONNECTOR = pyGTrends(google_username, google_password)
+print("Connected to google")
+
+TIME_SPAN_OPTIONS= [str(a)+ "y" for a in range(1, 12)]
+TIME_SPAN_OPTIONS+= [str(a)+ "m" for a in range(1, 91)]
+TIME_SPAN_OPTIONS+= [str(a)+ "d" for a in range(1, 91)]
 
 def getGoogleTrends(searchterms, period= None):
     connector= MYCONNECTOR
@@ -33,6 +38,7 @@ def getGoogleTrends(searchterms, period= None):
 def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
     # plt.plot(radius, square, marker='o', linestyle='--', color='r', label='Square')
     filename= None
+    plt.figure()
 
     time_axis= [i+1 for i in range(len(timeseries_data))]
     #custom x labels
@@ -73,13 +79,16 @@ def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
     current_fig= plt.gcf()
     current_fig.set_size_inches(18.5, 10.5)
 
-    current_fig.savefig("%s_%s.png" % (tweet_id, tweet_from))
+    current_fig.savefig("plots/%s_%s.png" % (tweet_id, tweet_from))
 
+    filename= "plots/%s_%s.png" % (tweet_id, tweet_from)
     return filename
 
 
 def parseGoogleData(raw_data):
-    timeseries_data= raw_data[raw_data.find("Interest over time"): raw_data.find("\n\n\n")]
+    top_regions= []
+    scores= []
+    timeseries_data= raw_data[raw_data.index("Interest over time"): raw_data.index("\n\n\n")]
     timeseries_data= timeseries_data.split("\n")
     timeseries_data= timeseries_data[1:]
     timeseries_data= [a.split(",") for a in timeseries_data]
@@ -87,7 +96,27 @@ def parseGoogleData(raw_data):
     timeseries_title= timeseries_data[0]
     timeseries_data= timeseries_data[1:]
 
-    return timeseries_title, timeseries_data
+    for i in range(len(timeseries_title)-1):
+        sum_score= 0
+        for j in range(len(timeseries_data)):
+            if timeseries_data[j][i+1]== " ":
+                timeseries_data[j][i+1]= "0"
+            sum_score+= int(timeseries_data[j][i+1])
+        ave_sum_score= int(sum_score/len(timeseries_data))
+        scores.append(ave_sum_score)
+
+    for i in range(len(timeseries_title)- 1):
+        raw_data= raw_data[raw_data.index("Top regions"):]
+        temp_data= raw_data[:raw_data.index("\n\n")]
+        temp_data= temp_data.split("\n")
+        temp_data= temp_data[2]
+        top_regions.append(temp_data.split(",")[0])
+        raw_data= raw_data[1:]
+        print("top regions")
+        print(top_regions)
+
+
+    return timeseries_title, timeseries_data, top_regions, scores
 
 
 def parseTweet(tweet_from, tweet_text):
@@ -112,12 +141,7 @@ def parseTweet(tweet_from, tweet_text):
     query= [a for a in query if a!= ""]
     query= " ".join(query)
 
-    time_span_options= [str(a)+ "y" for a in range(1, 12)]
-    time_span_options+= [str(a)+ "m" for a in range(1, 91)]
-    time_span_options+= [str(a)+ "d" for a in range(1, 91)]
-    #print(time_span_options)
-
-    if query.split(" ")[-1] in time_span_options:
+    if query.split(" ")[-1] in TIME_SPAN_OPTIONS:
         time_span= query.split(" ")[-1]
         query= query.split(" ")[:-1]
         query= " ".join(query)
@@ -128,14 +152,24 @@ def parseTweet(tweet_from, tweet_text):
 
     return tagged_users, query, time_span
 
-def getReplyTweet(tagged_users):
-    reply= "."+ " ".join("@%s" % a for a in tagged_users if a!= MYUSERNAME)
+def getReplyTweet(tagged_users, title, regions, scores):
+    reply= "."+ " ".join("@%s" % a for a in tagged_users if a!= MYUSERNAME)+ "\n"
+    title= title[1:]
+    for i in range(len(title)):
+        reply+= "#"+ "".join(title[i].split(" "))+ " score="+ str(scores[i])+ "; popular in "+ regions[i]+ "\n"
+    # remove last new line
+    reply= reply[:-1]
+
+    if len(reply)> 115:
+        reply= reply[:112]+ "..."
 
     return reply
 
 
 class MyStreamListener(tweepy.StreamListener):
     def on_status(self, status):
+        print("in on status")
+
         tweet_id= status.id
         tweet_text= status.text
         tweet_from= status.user.screen_name
@@ -149,28 +183,40 @@ class MyStreamListener(tweepy.StreamListener):
                 tagged_users, tweet_query, time_span= parseTweet(tweet_from, tweet_text.lower())
             except:
                 error_reply= "@%s please check the format of your tweet. I can't understand it yet!" % tweet_from
+                print("reply: %s" % error_reply)
                 error_reply_status= api.update_status(status= error_reply, in_reply_to_status_id= tweet_id)
+                #print("status: %s" % error_reply_status)
             else:
                 raw_data= getGoogleTrends(tweet_query, time_span)
+                print("Got the data.")
 
                 if "Interest over time" in raw_data:
                     outfile= open("tmp_data1.txt", "w")
                     outfile.write(raw_data)
                     outfile.close()
 
-                    timeseries_title, timeseries_data= parseGoogleData(raw_data)
-                    filename= savePlotData(timeseries_title, timeseries_data tweet_id, tweet_from)
+                    timeseries_title, timeseries_data, top_regions, scores= parseGoogleData(raw_data)
+                    print("time series title: %s" % timeseries_title)
+
+                    filename= savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from)
+                    print(filename)
 
                     if filename:
-                        reply_tweet= getReplyTweet(tagged_users)
+                        reply_tweet= getReplyTweet(tagged_users, timeseries_title, top_regions, scores)
+                        print("reply: %s" % reply_tweet)
                         reply_tweet_status= api.update_with_media(filename= filename, status= reply_tweet, in_reply_to_status_id= tweet_id)
+                        #print("status: %s" % reply_tweet_status)
 
                 elif "Check" in raw_data:
                     error_reply= "@%s please check the format of your date and keywords. I am finding it difficult to parse them." % tweet_from
+                    print("reply: %s" % error_reply)
                     error_reply_status= api.update_status(status= error_reply, in_reply_to_status_id= tweet_id)
+                    #print("status: %s" % error_reply_status)
                 else:
                     error_reply= "@%s provided keywords have very less traffic to compare. Choose some interesting topics!" % tweet_from
+                    print("reply: %s" % error_reply)
                     error_reply_status= api.update_status(status= error_reply, in_reply_to_status_id= tweet_id)
+                    #print("status: %s" % error_reply_status)
 
     def on_error(self, status_code):
         print(status_code)
@@ -189,9 +235,8 @@ if __name__== "__main__":
 
     try:
         # starts listening to twitter stream
-        #myStream.filter(track=['python'])
+        #myStream.filter(track=['atwhoispopular'])
         myStream.userstream(_with='user', replies='all')
-        print("streamer not using")
     except Exception as e:
         print("Stream exception: %s" % e)
         raise e

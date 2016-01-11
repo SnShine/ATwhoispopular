@@ -1,5 +1,5 @@
 temporary and log files
-plots*
+plots/*
 tmp*
 *.log
 *.html

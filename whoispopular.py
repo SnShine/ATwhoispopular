@@ -58,9 +58,9 @@ def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
 
     plt.xticks(time_ticks, time_labels)
 
-    lines_styles = ["-","--","-.",":","--"]
+    lines_styles = ["-","--","-.",":","-"]
     linestyle_cycler = cycle(lines_styles)
-    lines_widths = [2, 2, 3, 3, 2]
+    lines_widths = [2, 2, 3, 3, 3]
     linewidth_cycler= cycle(lines_widths)
 
     for i in range(len(timeseries_title)- 1):
@@ -68,12 +68,15 @@ def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
         y_axis= ["0" if a==" " else a for a in y_axis]
         y_axis= [int(a) for a in y_axis]
         y_axis_smooth= sg_filter.savitzky_golay(y_axis, 11, 3)
+        y_axis_smooth= [0 if a<0 else a for a in y_axis_smooth]
 
         #plt.plot(time_axis, y_axis, linewidth=2, c="purple")
         plt.plot(time_axis, y_axis_smooth, linewidth=next(linewidth_cycler), linestyle=next(linestyle_cycler), label=timeseries_title[i+1])
 
     plt.xlabel(timeseries_title[0])
-    plt.title('By @SnShines')
+    plot_title= [a[0].upper()+ a[1:] for a in timeseries_title[1:]]
+    plt.title(" vs. ".join(plot_title))
+    plt.annotate("By @SnShines", xy=(0.9, 0.95),  xycoords='figure fraction', xytext=(0.9, 0.95), textcoords='figure fraction')
     plt.legend()
 
     current_fig= plt.gcf()
@@ -137,6 +140,7 @@ def parseTweet(tweet_from, tweet_text):
 
     query= query.replace(" vs. ", ", ")
     query= query.replace(" vs ", ", ")
+    query= query.replace(" or ", ", ")
     query= query.split(" ")
     query= [a for a in query if a!= ""]
     query= " ".join(query)

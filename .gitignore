@@ -1,5 +1,6 @@
 temporary and log files
 plots/*
+trends/*
 tmp*
 *.log
 *.html

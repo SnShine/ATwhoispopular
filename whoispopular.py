@@ -1,11 +1,18 @@
-import requests
+import os
+import time
+from itertools import cycle
+import logging
+import datetime
+
 import config, sg_filter
+
+import requests
 from pytrends.pyGTrends import pyGTrends
 import tweepy
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from itertools import cycle
-import os, sys, time
 from ttp import ttp
 
 
@@ -14,13 +21,38 @@ MYUSERNAME= "atwhoispopular"
 google_username= config.google["User_Name"]
 google_password= config.google["Password"]
 
-print("Connecting to google")
+logging.basicConfig(filename='logs.log',level=logging.INFO)
+
+
+def now_time():
+    now = datetime.datetime.now()
+    return now.strftime('[%Y/%m/%d %H:%M:%S]')
+
+
+logging.info("%s Connecting to google..." % now_time())
+print("%s Connecting to google..." % now_time())
 MYCONNECTOR = pyGTrends(google_username, google_password)
-print("Connected to google")
+logging.info("%s Connected to google" % now_time())
+print("%s Connected to google" % now_time())
+logging.info("\n")
+
+# time to sleep if got a 420 error
+BACKOFF= 2
+backoff= BACKOFF
+
+# don't respond to queries from these accounts
+BLACKLIST = [
+    "pixelsorter",
+    "lowpolybot",
+    "slashkarebear",
+    "slashgif",
+    "slashremindme"
+]
 
 TIME_SPAN_OPTIONS= [str(a)+ "y" for a in range(1, 12)]
 TIME_SPAN_OPTIONS+= [str(a)+ "m" for a in range(1, 91)]
 TIME_SPAN_OPTIONS+= [str(a)+ "d" for a in range(1, 91)]
+
 
 def getGoogleTrends(searchterms, period= None):
     connector= MYCONNECTOR
@@ -35,8 +67,8 @@ def getGoogleTrends(searchterms, period= None):
     else:
         return("Provided keywords have less traffic to compare.")
 
+
 def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
-    # plt.plot(radius, square, marker='o', linestyle='--', color='r', label='Square')
     filename= None
     plt.figure()
 
@@ -44,7 +76,7 @@ def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
     #custom x labels
     time_ticks_diff= int(len(timeseries_data)/5)
     time_ticks= [1, time_ticks_diff, 2*time_ticks_diff, 3*time_ticks_diff, 4*time_ticks_diff, len(timeseries_data)-1]
-    # print(time_ticks)
+
     time_labels= [timeseries_data[a][0] for a in time_ticks]
     #change latest
     if timeseries_title[0]== "Time":
@@ -53,8 +85,6 @@ def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
         time_labels[-1]= "Today"
     else:
         time_labels[-1]= "This week"
-
-    # print(time_labels)
 
     plt.xticks(time_ticks, time_labels)
 
@@ -70,13 +100,12 @@ def savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from):
         y_axis_smooth= sg_filter.savitzky_golay(y_axis, 11, 3)
         y_axis_smooth= [0 if a<0 else a for a in y_axis_smooth]
 
-        #plt.plot(time_axis, y_axis, linewidth=2, c="purple")
         plt.plot(time_axis, y_axis_smooth, linewidth=next(linewidth_cycler), linestyle=next(linestyle_cycler), label=timeseries_title[i+1])
 
     plt.xlabel(timeseries_title[0])
     plot_title= [a[0].upper()+ a[1:] for a in timeseries_title[1:]]
     plt.title(" vs. ".join(plot_title))
-    plt.annotate("By @SnShines", xy=(0.9, 0.95),  xycoords='figure fraction', xytext=(0.9, 0.95), textcoords='figure fraction')
+    plt.annotate("By @SnShines", xy=(0.9, 0.95),  xycoords="figure fraction", xytext=(0.9, 0.95), textcoords="figure fraction")
     plt.legend()
 
     current_fig= plt.gcf()
@@ -115,9 +144,6 @@ def parseGoogleData(raw_data):
         temp_data= temp_data[2]
         top_regions.append(temp_data.split(",")[0])
         raw_data= raw_data[1:]
-        print("top regions")
-        print(top_regions)
-
 
     return timeseries_title, timeseries_data, top_regions, scores
 
@@ -132,11 +158,11 @@ def parseTweet(tweet_from, tweet_text):
     tagged_urls = result.urls
 
     for user in tagged_users:
-        query = query.replace('@%s' % user, '')
+        query = query.replace("@%s" % user, "")
     for tag in tagged_hashtags:
-        query = query.replace('#%s' % tag, '')
+        query = query.replace("#%s" % tag, "")
     for url in tagged_urls:
-        query = query.replace('%s' % url, '')
+        query = query.replace("%s" % url, "")
 
     query= query.replace(" vs. ", ", ")
     query= query.replace(" vs ", ", ")
@@ -156,6 +182,7 @@ def parseTweet(tweet_from, tweet_text):
 
     return tagged_users, query, time_span
 
+
 def getReplyTweet(tagged_users, title, regions, scores):
     reply= "."+ " ".join("@%s" % a for a in tagged_users if a!= MYUSERNAME)+ "\n"
     title= title[1:]
@@ -172,76 +199,79 @@ def getReplyTweet(tagged_users, title, regions, scores):
 
 class MyStreamListener(tweepy.StreamListener):
     def on_status(self, status):
-        print("in on status")
-
         tweet_id= status.id
         tweet_text= status.text
         tweet_from= status.user.screen_name
 
-        print(tweet_id)
-        print(tweet_from)
-        print(tweet_text)
+        logging.info("\n")
+        logging.info("%s Tweet from: %s; Id: %s" % (now_time(), tweet_id, tweet_from))
+        print("%s Tweet from: %s; Id: %s" % (now_time(), tweet_id, tweet_from))
+        logging.info("Tweet: %s" % tweet_text)
 
-        if tweet_from.lower() != MYUSERNAME and not hasattr(status, "retweeted_status"):
+        if tweet_from.lower() != MYUSERNAME and tweet_from.lower() not in BLACKLIST and not hasattr(status, "retweeted_status"):
             try:
                 tagged_users, tweet_query, time_span= parseTweet(tweet_from, tweet_text.lower())
             except:
                 error_reply= "@%s please check the format of your tweet. I can't understand it yet!" % tweet_from
-                print("reply: %s" % error_reply)
+                logging.info("Error reply: %s" % error_reply)
                 error_reply_status= api.update_status(status= error_reply, in_reply_to_status_id= tweet_id)
-                #print("status: %s" % error_reply_status)
             else:
                 raw_data= getGoogleTrends(tweet_query, time_span)
-                print("Got the data.")
+                logging.info("%s Got google trends data" % now_time())
 
                 if "Interest over time" in raw_data:
-                    outfile= open("tmp_data1.txt", "w")
+                    outfile= open("trends/%s_%s.txt" % (tweet_id, tweet_from), "w")
                     outfile.write(raw_data)
                     outfile.close()
 
                     timeseries_title, timeseries_data, top_regions, scores= parseGoogleData(raw_data)
-                    print("time series title: %s" % timeseries_title)
+                    logging.info("Time series title: %s" % timeseries_title)
 
                     filename= savePlotData(timeseries_title, timeseries_data, tweet_id, tweet_from)
-                    print(filename)
 
                     if filename:
                         reply_tweet= getReplyTweet(tagged_users, timeseries_title, top_regions, scores)
-                        print("reply: %s" % reply_tweet)
+                        logging.info("Reply: %s" % reply_tweet)
                         reply_tweet_status= api.update_with_media(filename= filename, status= reply_tweet, in_reply_to_status_id= tweet_id)
-                        #print("status: %s" % reply_tweet_status)
 
                 elif "Check" in raw_data:
                     error_reply= "@%s please check the format of your date and keywords. I am finding it difficult to parse them." % tweet_from
-                    print("reply: %s" % error_reply)
+                    logging.info("Error reply: %s" % error_reply)
                     error_reply_status= api.update_status(status= error_reply, in_reply_to_status_id= tweet_id)
-                    #print("status: %s" % error_reply_status)
                 else:
                     error_reply= "@%s provided keywords have very less traffic to compare. Choose some interesting topics!" % tweet_from
-                    print("reply: %s" % error_reply)
+                    logging.info("Error reply: %s" % error_reply)
                     error_reply_status= api.update_status(status= error_reply, in_reply_to_status_id= tweet_id)
-                    #print("status: %s" % error_reply_status)
 
     def on_error(self, status_code):
-        print(status_code)
-        return False
+        global backoff
+        logging.info("%s on_error: %d" % (now_time(), status_code))
+
+        if status_code== 420:
+            backoff= backoff* 2
+            logging.info("on_error: backoff %d seconds" % backoff)
+            time.sleep(backoff)
+            return True
 
 
 if __name__== "__main__":
     # twitter oauth
-    auth = tweepy.OAuthHandler(config.twitter['API_Key'], config.twitter['API_Secret'])
-    auth.set_access_token(config.twitter['Access_Token'],
-                          config.twitter['Access_Token_Secret'])
+    auth = tweepy.OAuthHandler(config.twitter["API_Key"], config.twitter["API_Secret"])
+    auth.set_access_token(config.twitter["Access_Token"],
+                          config.twitter["Access_Token_Secret"])
     api = tweepy.API(auth)
 
     myStreamListener= MyStreamListener()
     myStream= tweepy.Stream(auth = api.auth, listener=myStreamListener)
 
+    if not os.path.exists('plots/'):
+        os.makedirs('plots/')
+    if not os.path.exists('trends/'):
+        os.makedirs('trends/')
+
     try:
         # starts listening to twitter stream
-        #myStream.filter(track=['atwhoispopular'])
-        myStream.userstream(_with='user', replies='all')
+        myStream.userstream(_with="user", replies="all")
     except Exception as e:
-        print("Stream exception: %s" % e)
+        logging.info("%s Stream exception: %s" % (now_time(), e))
         raise e
-

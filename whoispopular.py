@@ -167,6 +167,7 @@ def parseTweet(tweet_from, tweet_text):
     query= query.replace(" vs. ", ", ")
     query= query.replace(" vs ", ", ")
     query= query.replace(" or ", ", ")
+    query= query.replace(" and ", ", ")
     query= query.split(" ")
     query= [a for a in query if a!= ""]
     query= " ".join(query)

@@ -1,9 +1,10 @@
-temporary and log files
+# temporary and log files
 plots/*
 trends/*
 tmp*
 *.log
 *.html
+scpfromec2*
 
-files containing personal detalis
+# files containing personal detalis
 config*
